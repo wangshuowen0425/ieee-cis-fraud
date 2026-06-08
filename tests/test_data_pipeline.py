@@ -6,6 +6,7 @@ from src.data_pipeline import (
     add_missing_features,
     build_data_summary,
     build_metadata,
+    run_pipeline,
     merge_transaction_identity,
     save_processed_splits,
     stratified_sample,
@@ -32,6 +33,9 @@ def make_config(tmp_path: Path) -> dict:
         "random_seed": 42,
         "smoke_test_rows": 50,
         "target_sample_size": 120000,
+        "formal_sample_size": 60,
+        "formal_output_subdir": "stage2_formal",
+        "maximum_allowed_fraud_rate_difference": 0.002,
         "train_ratio": 0.60,
         "valid_ratio": 0.20,
         "test_ratio": 0.20,
@@ -191,6 +195,7 @@ def test_metadata_numbers_come_from_real_data(tmp_path: Path) -> None:
 
     metadata = build_metadata(
         config,
+        "stage1_smoke",
         transaction,
         identity,
         merged,
@@ -200,6 +205,9 @@ def test_metadata_numbers_come_from_real_data(tmp_path: Path) -> None:
         missing_transaction_columns=["card1"],
         missing_identity_columns=[],
         missing_indicator_columns=indicators,
+        skipped_missing_indicators=[],
+        requested_sample_size=50,
+        fraud_rate_check=True,
         output_paths=outputs,
     )
     summary = build_data_summary(splits)
@@ -226,3 +234,83 @@ def test_metadata_numbers_come_from_real_data(tmp_path: Path) -> None:
     )
     assert len(metadata["source_files"]) == 2
     assert metadata["splits"]["train"]["rows"] == int(summary.loc[summary["split"] == "train", "rows"].iloc[0])
+
+
+def write_pipeline_csvs(tmp_path: Path) -> Path:
+    config = make_config(tmp_path)
+    config["smoke_test_rows"] = 20
+    config["formal_sample_size"] = 60
+    raw_dir = tmp_path / "data" / "raw"
+    raw_dir.mkdir(parents=True)
+    make_transaction(100).to_csv(raw_dir / "train_transaction.csv", index=False)
+    identity = pd.DataFrame(
+        {
+            "TransactionID": range(1, 81),
+            "id_01": [float(index) for index in range(80)],
+            "id_02": [None if index % 5 == 0 else float(index) for index in range(80)],
+            "DeviceType": ["mobile" if index % 2 else "desktop" for index in range(80)],
+            "DeviceInfo": ["ios" if index % 2 else None for index in range(80)],
+        }
+    )
+    identity.to_csv(raw_dir / "train_identity.csv", index=False)
+    config_dir = tmp_path / "configs"
+    config_dir.mkdir()
+    config_path = config_dir / "data_config.yaml"
+    import yaml
+
+    config_to_write = {key: value for key, value in config.items() if not key.startswith("_")}
+    config_path.write_text(yaml.safe_dump(config_to_write, sort_keys=False), encoding="utf-8")
+    return config_path
+
+
+def test_formal_stage_writes_independent_directory_without_overwriting_smoke(tmp_path: Path) -> None:
+    from src.data_loader import load_yaml_config
+
+    config_path = write_pipeline_csvs(tmp_path)
+    config = load_yaml_config(config_path)
+
+    run_pipeline(config, stage="smoke")
+    smoke_train = tmp_path / "data" / "processed" / "train.parquet"
+    assert smoke_train.exists()
+    run_pipeline(config, stage="formal")
+
+    assert smoke_train.exists()
+    assert (tmp_path / "data" / "processed" / "stage2_formal" / "train.parquet").exists()
+    assert (tmp_path / "data" / "processed" / "stage2_formal" / "metadata.json").exists()
+    assert (tmp_path / "reports" / "tables" / "stage2_data_quality.json").exists()
+    assert (tmp_path / "reports" / "tables" / "stage2_feature_profile.csv").exists()
+
+
+def test_formal_sample_size_and_metadata_are_recorded(tmp_path: Path) -> None:
+    from src.data_loader import load_yaml_config
+
+    config = load_yaml_config(write_pipeline_csvs(tmp_path))
+    result = run_pipeline(config, stage="formal")
+    metadata = result["metadata"]
+
+    assert metadata["stage"] == "stage2_formal"
+    assert metadata["requested_sample_size"] == 60
+    assert metadata["actual_sample_size"] == 60
+    assert metadata["sample_size"] <= 60
+    assert metadata["feature_group_file"].endswith("feature_groups.json")
+    assert metadata["data_quality_file"].endswith("stage2_data_quality.json")
+    assert metadata["feature_profile_file"].endswith("stage2_feature_profile.csv")
+
+
+def test_formal_splits_are_shared_for_all_feature_groups(tmp_path: Path) -> None:
+    from src.data_loader import load_yaml_config
+
+    config = load_yaml_config(write_pipeline_csvs(tmp_path))
+    run_pipeline(config, stage="formal")
+    train = pd.read_parquet(tmp_path / "data" / "processed" / "stage2_formal" / "train.parquet")
+    groups = __import__("json").loads((tmp_path / "reports" / "tables" / "feature_groups.json").read_text())
+    group_payload = groups["groups"]
+
+    for group in group_payload.values():
+        assert set(group["features"]).issubset(train.columns)
+    assert set(group_payload["transaction_basic"]["features"]).issubset(
+        group_payload["transaction_identity"]["features"]
+    )
+    assert set(group_payload["transaction_identity"]["features"]).issubset(
+        group_payload["transaction_identity_missing"]["features"]
+    )

@@ -6,6 +6,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Any
+from datetime import datetime, timezone
 
 
 LOGGER = logging.getLogger(__name__)
@@ -63,11 +64,28 @@ def validate_feature_groups(feature_groups: dict[str, list[str]]) -> None:
         raise ValueError("transaction_identity must be a subset of transaction_identity_missing")
 
 
-def save_feature_groups(feature_groups: dict[str, list[str]], output_path: str | Path) -> Path:
-    """Save feature groups as JSON."""
+def serialize_feature_groups(feature_groups: dict[str, list[str]], stage: str) -> dict[str, Any]:
+    """Serialize feature groups with stage, generation time, counts, and fields."""
     validate_feature_groups(feature_groups)
+    return {
+        "stage": stage,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "groups": {
+            name: {"count": len(columns), "features": columns}
+            for name, columns in feature_groups.items()
+        },
+    }
+
+
+def save_feature_groups(
+    feature_groups: dict[str, list[str]],
+    output_path: str | Path,
+    stage: str = "stage1_smoke",
+) -> Path:
+    """Save feature groups as JSON with stage metadata."""
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(feature_groups, indent=2, ensure_ascii=False), encoding="utf-8")
+    payload = serialize_feature_groups(feature_groups, stage=stage)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     LOGGER.info("Saved feature groups to %s", path)
     return path

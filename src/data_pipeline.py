@@ -11,6 +11,11 @@ from typing import Any
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
+from src.data_quality import (
+    build_data_quality_report,
+    build_feature_profile,
+    fraud_rate_check_passed,
+)
 from src.data_loader import (
     load_selected_identity_data,
     load_selected_transaction_data,
@@ -175,6 +180,13 @@ def save_processed_splits(
     return outputs
 
 
+def _save_json(payload: dict[str, Any], output_path: str | Path) -> Path:
+    path = Path(output_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
 def _split_stats(data: pd.DataFrame, target_column: str) -> dict[str, Any]:
     fraud_count = int(data[target_column].sum())
     return {
@@ -196,6 +208,7 @@ def build_data_summary(splits: dict[str, pd.DataFrame], target_column: str = "is
 
 def build_metadata(
     config: dict[str, Any],
+    stage_name: str,
     transaction: pd.DataFrame,
     identity: pd.DataFrame,
     merged: pd.DataFrame,
@@ -205,6 +218,9 @@ def build_metadata(
     missing_transaction_columns: list[str],
     missing_identity_columns: list[str],
     missing_indicator_columns: list[str],
+    skipped_missing_indicators: list[str],
+    requested_sample_size: int,
+    fraud_rate_check: bool,
     output_paths: dict[str, Path],
 ) -> dict[str, Any]:
     """Build metadata using actual dataframes and output paths."""
@@ -224,9 +240,11 @@ def build_metadata(
         column.removesuffix("_is_missing") for column in missing_indicator_columns
     ]
     return {
-        "stage": "stage1_smoke",
+        "stage": stage_name,
         "sample_strategy": config.get("sample_strategy"),
         "random_seed": int(config["random_seed"]),
+        "requested_sample_size": int(requested_sample_size),
+        "actual_sample_size": int(len(sampled)),
         "sample_size": int(len(sampled)),
         "target_column": target_column,
         "id_column": id_column,
@@ -243,6 +261,13 @@ def build_metadata(
         "categorical_columns": column_types["categorical_columns"],
         "missing_source_columns": missing_source_columns,
         "missing_raw_columns": missing_raw_columns,
+        "source_feature_columns": feature_groups["transaction_identity_missing"],
+        "feature_group_file": str(output_paths.get("feature_groups", "")),
+        "data_quality_file": str(output_paths.get("data_quality", "")),
+        "feature_profile_file": str(output_paths.get("feature_profile", "")),
+        "created_missing_indicators": missing_indicator_columns,
+        "skipped_missing_indicators": skipped_missing_indicators,
+        "fraud_rate_check_passed": fraud_rate_check,
         "source_files": [str(path) for path in raw_paths.values()],
         "source_file_map": {name: str(path) for name, path in raw_paths.items()},
         "transaction_rows": int(len(transaction)),
@@ -270,10 +295,36 @@ def _identity_match_rate(transaction: pd.DataFrame, identity: pd.DataFrame, id_c
     return float(transaction[id_column].isin(set(identity[id_column])).mean())
 
 
+def _stage_settings(config: dict[str, Any], stage: str) -> dict[str, Any]:
+    processed_root = _project_path(config, config["processed_dir"])
+    if stage == "smoke":
+        return {
+            "stage_name": "stage1_smoke",
+            "sample_size": int(config["smoke_test_rows"]),
+            "processed_dir": processed_root,
+            "summary_file": "data_summary.csv",
+            "feature_profile_file": None,
+            "data_quality_file": None,
+        }
+    if stage == "formal":
+        return {
+            "stage_name": "stage2_formal",
+            "sample_size": int(config.get("formal_sample_size", config["target_sample_size"])),
+            "processed_dir": processed_root / str(config["formal_output_subdir"]),
+            "summary_file": "stage2_data_summary.csv",
+            "feature_profile_file": "stage2_feature_profile.csv",
+            "data_quality_file": "stage2_data_quality.json",
+        }
+    raise ValueError(f"Unsupported stage: {stage}")
+
+
+def _candidate_missing_sources(created_missing_indicators: list[str]) -> set[str]:
+    return {column.removesuffix("_is_missing") for column in created_missing_indicators}
+
+
 def run_pipeline(config: dict[str, Any], stage: str = "smoke") -> dict[str, Any]:
     """Run the configured data pipeline stage."""
-    if stage != "smoke":
-        raise ValueError("Only smoke stage is implemented for this task")
+    settings = _stage_settings(config, stage)
 
     transaction, missing_transaction = load_selected_transaction_data(config)
     identity, missing_identity = load_selected_identity_data(config)
@@ -282,7 +333,7 @@ def run_pipeline(config: dict[str, Any], stage: str = "smoke") -> dict[str, Any]
     sampled = stratified_sample(
         merged,
         target_column=config["target_column"],
-        sample_size=int(config["smoke_test_rows"]),
+        sample_size=int(settings["sample_size"]),
         random_state=int(config["random_seed"]),
     )
     sampled, missing_indicators = add_missing_features(
@@ -290,6 +341,11 @@ def run_pipeline(config: dict[str, Any], stage: str = "smoke") -> dict[str, Any]
         missing_candidates=list(config.get("missing_indicator_candidates", [])),
         exclude_columns=[config["id_column"], config["target_column"], config["time_column"]],
     )
+    created_missing_sources = _candidate_missing_sources(missing_indicators)
+    skipped_missing_indicators = [
+        column for column in config.get("missing_indicator_candidates", [])
+        if column not in created_missing_sources
+    ]
     train, valid, test = stratified_train_valid_test_split(
         sampled,
         target_column=config["target_column"],
@@ -300,7 +356,7 @@ def run_pipeline(config: dict[str, Any], stage: str = "smoke") -> dict[str, Any]
         random_state=int(config["random_seed"]),
     )
 
-    processed_dir = _project_path(config, config["processed_dir"])
+    processed_dir = Path(settings["processed_dir"])
     output_paths = save_processed_splits(train, valid, test, processed_dir)
 
     basic_group = build_transaction_basic_group(list(sampled.columns), config)
@@ -314,16 +370,69 @@ def run_pipeline(config: dict[str, Any], stage: str = "smoke") -> dict[str, Any]
     validate_feature_groups(feature_groups)
 
     reports_dir = _project_path(config, "reports/tables")
-    feature_groups_path = save_feature_groups(feature_groups, reports_dir / "feature_groups.json")
+    feature_groups_path = save_feature_groups(
+        feature_groups,
+        reports_dir / "feature_groups.json",
+        stage=str(settings["stage_name"]),
+    )
 
     splits = {"train": train, "valid": valid, "test": test}
     summary = build_data_summary(splits, config["target_column"])
-    summary_path = reports_dir / "data_summary.csv"
+    summary_path = reports_dir / str(settings["summary_file"])
     reports_dir.mkdir(parents=True, exist_ok=True)
     summary.to_csv(summary_path, index=False)
+    output_paths = {**output_paths, "feature_groups": feature_groups_path, "data_summary": summary_path}
+
+    transaction_feature_columns = [
+        column for column in transaction.columns
+        if column not in {config["id_column"], config["target_column"], config["time_column"]}
+    ]
+    identity_feature_columns = [column for column in identity.columns if column != config["id_column"]]
+    max_allowed_difference = float(config.get("maximum_allowed_fraud_rate_difference", 0.002))
+    fraud_rate_ok = fraud_rate_check_passed(
+        float(merged[config["target_column"]].mean()) if len(merged) else 0.0,
+        float(sampled[config["target_column"]].mean()) if len(sampled) else 0.0,
+        max_allowed_difference,
+    )
+
+    if not fraud_rate_ok:
+        LOGGER.warning(
+            "Fraud-rate check failed: original=%.6f sampled=%.6f max_difference=%.6f",
+            float(merged[config["target_column"]].mean()),
+            float(sampled[config["target_column"]].mean()),
+            max_allowed_difference,
+        )
+
+    if stage == "formal":
+        feature_profile = build_feature_profile(
+            sampled,
+            feature_groups=feature_groups,
+            transaction_columns=transaction_feature_columns,
+            identity_columns=identity_feature_columns,
+            missing_indicator_columns=missing_indicators,
+        )
+        feature_profile_path = reports_dir / str(settings["feature_profile_file"])
+        feature_profile.to_csv(feature_profile_path, index=False)
+        data_quality = build_data_quality_report(
+            transaction=transaction,
+            identity=identity,
+            merged=merged,
+            sampled=sampled,
+            splits=splits,
+            feature_groups=feature_groups,
+            requested_sample_size=int(settings["sample_size"]),
+            missing_candidate_columns_not_found=skipped_missing_indicators,
+            id_column=config["id_column"],
+            target_column=config["target_column"],
+        )
+        data_quality["fraud_rate_check_passed"] = fraud_rate_ok
+        data_quality_path = _save_json(data_quality, reports_dir / str(settings["data_quality_file"]))
+        output_paths["feature_profile"] = feature_profile_path
+        output_paths["data_quality"] = data_quality_path
 
     metadata = build_metadata(
         config=config,
+        stage_name=str(settings["stage_name"]),
         transaction=transaction,
         identity=identity,
         merged=merged,
@@ -333,7 +442,10 @@ def run_pipeline(config: dict[str, Any], stage: str = "smoke") -> dict[str, Any]
         missing_transaction_columns=missing_transaction,
         missing_identity_columns=missing_identity,
         missing_indicator_columns=missing_indicators,
-        output_paths={**output_paths, "feature_groups": feature_groups_path, "data_summary": summary_path},
+        skipped_missing_indicators=skipped_missing_indicators,
+        requested_sample_size=int(settings["sample_size"]),
+        fraud_rate_check=fraud_rate_ok,
+        output_paths=output_paths,
     )
     metadata["identity_match_rate"] = identity_match_rate
     metadata_path = processed_dir / "metadata.json"
@@ -369,7 +481,7 @@ def _log_run_summary(
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build IEEE-CIS processed data splits.")
     parser.add_argument("--config", required=True, help="Path to data YAML config.")
-    parser.add_argument("--stage", choices=["smoke"], required=True, help="Pipeline stage to run.")
+    parser.add_argument("--stage", choices=["smoke", "formal"], required=True, help="Pipeline stage to run.")
     return parser
 
 

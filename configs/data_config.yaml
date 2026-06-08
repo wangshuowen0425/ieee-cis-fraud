@@ -8,6 +8,9 @@ time_column: TransactionDT
 random_seed: 42
 smoke_test_rows: 50000
 target_sample_size: 120000
+formal_sample_size: 120000
+formal_output_subdir: stage2_formal
+maximum_allowed_fraud_rate_difference: 0.002
 train_ratio: 0.60
 valid_ratio: 0.20
 test_ratio: 0.20
