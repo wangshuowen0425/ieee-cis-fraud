@@ -11,7 +11,7 @@ import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder, StandardScaler
 
 
 EXPECTED_FEATURE_GROUPS: frozenset[str] = frozenset(
@@ -30,6 +30,13 @@ def load_feature_groups(feature_groups_path: Path) -> dict[str, list[str]]:
 
     if not isinstance(feature_groups, dict):
         raise ValueError("Feature groups file must contain a JSON object.")
+
+    if "groups" in feature_groups and isinstance(feature_groups["groups"], dict):
+        feature_groups = {
+            group_name: group_payload.get("features", [])
+            for group_name, group_payload in feature_groups["groups"].items()
+            if isinstance(group_payload, dict)
+        }
 
     if not EXPECTED_FEATURE_GROUPS.intersection(feature_groups):
         expected = ", ".join(sorted(EXPECTED_FEATURE_GROUPS))
@@ -135,6 +142,36 @@ def build_categorical_pipeline(config: dict[str, Any]) -> Pipeline:
     )
 
 
+def build_tree_numeric_pipeline(config: dict[str, Any]) -> Pipeline:
+    """Build numeric preprocessing for tree models without scaling."""
+
+    return Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy=config.get("numeric_imputer", "median"))),
+        ]
+    )
+
+
+def build_tree_categorical_pipeline(config: dict[str, Any]) -> Pipeline:
+    """Build categorical preprocessing for tree models using ordinal encoding."""
+
+    return Pipeline(
+        steps=[
+            (
+                "imputer",
+                SimpleImputer(
+                    strategy=config.get("categorical_imputer", "constant"),
+                    fill_value=config.get("tree_categorical_fill_value", "**MISSING**"),
+                ),
+            ),
+            (
+                "ordinal",
+                OrdinalEncoder(handle_unknown="use_encoded_value", unknown_value=-1),
+            ),
+        ]
+    )
+
+
 def build_preprocessor(
     numeric_columns: list[str],
     categorical_columns: list[str],
@@ -147,6 +184,22 @@ def build_preprocessor(
         transformers.append(("numeric", build_numeric_pipeline(config), numeric_columns))
     if categorical_columns:
         transformers.append(("categorical", build_categorical_pipeline(config), categorical_columns))
+
+    return ColumnTransformer(transformers=transformers, remainder="drop")
+
+
+def build_tree_preprocessor(
+    numeric_columns: list[str],
+    categorical_columns: list[str],
+    config: dict[str, Any],
+) -> ColumnTransformer:
+    """Build a column transformer for tree models."""
+
+    transformers: list[tuple[str, object, list[str]]] = []
+    if numeric_columns:
+        transformers.append(("numeric", build_tree_numeric_pipeline(config), numeric_columns))
+    if categorical_columns:
+        transformers.append(("categorical", build_tree_categorical_pipeline(config), categorical_columns))
 
     return ColumnTransformer(transformers=transformers, remainder="drop")
 

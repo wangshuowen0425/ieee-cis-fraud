@@ -17,6 +17,7 @@ from src.evaluate import (
     plot_precision_recall_curve,
     save_results_table,
 )
+from src.experiment_runner import run_ablation_and_final_test, run_model_comparison
 from src.metrics import validate_metric_names
 from src.models import build_model, build_training_pipeline, get_available_models, is_lightgbm_available
 from src.preprocessing import (
@@ -63,6 +64,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--config", type=Path, default=Path("configs/model_config.yaml"))
     parser.add_argument("--list-models", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--mode",
+        choices=["model-comparison", "ablation-and-final-test"],
+        default=None,
+    )
     parser.add_argument("--data-dir", type=Path, default=Path("data/processed"))
     parser.add_argument("--metadata", type=Path, default=Path("data/processed/metadata.json"))
     parser.add_argument(
@@ -340,6 +346,36 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.dry_run:
             print("Dry run passed: configuration structure, models, and metrics are valid.")
+
+        if args.mode == "model-comparison":
+            _configure_logging(args.run_name)
+            table = run_model_comparison(
+                config,
+                data_dir=args.data_dir,
+                metadata_path=args.metadata,
+                feature_groups_path=args.feature_groups,
+                output_dir=args.output_dir,
+                run_name=args.run_name,
+            )
+            print(f"Stage 2 model comparison complete: {len(table)} rows")
+            print(f"Results: {args.output_dir / 'tables' / f'{args.run_name}_model_comparison_valid.csv'}")
+            return 0
+
+        if args.mode == "ablation-and-final-test":
+            _configure_logging(args.run_name)
+            ablation, final_test, selected_group, reason = run_ablation_and_final_test(
+                config,
+                data_dir=args.data_dir,
+                metadata_path=args.metadata,
+                feature_groups_path=args.feature_groups,
+                output_dir=args.output_dir,
+                run_name=args.run_name,
+            )
+            print(f"Stage 2 ablation complete: {len(ablation)} rows")
+            print(f"Selected feature group: {selected_group}")
+            print(f"Selection reason: {reason}")
+            print(f"Final test rows: {len(final_test)}")
+            return 0
 
         if _training_mode_requested(raw_args):
             return run_stage1(args, config)

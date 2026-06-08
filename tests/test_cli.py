@@ -156,6 +156,54 @@ def test_cli_stage1_end_to_end_with_fixture_data(tmp_path: Path) -> None:
     assert confusion_path.exists()
 
 
+def test_cli_stage2_model_comparison_mode_with_fixture_data(tmp_path: Path) -> None:
+    data_dir, metadata_path, feature_groups_path, reports_dir = _write_fixture_files(tmp_path)
+    with Path("configs/model_config.yaml").open("r", encoding="utf-8") as file:
+        config = yaml.safe_load(file)
+    config["models"]["lightgbm"]["enabled"] = False
+    config["models"]["hist_gradient_boosting"]["enabled"] = True
+    config["models"]["hist_gradient_boosting"]["max_iter"] = 2
+    config["models"]["hist_gradient_boosting"]["early_stopping"] = False
+    config["models"]["random_forest"]["enabled"] = True
+    config["models"]["random_forest"]["n_estimators"] = 2
+    config["tree_model_fallback_order"] = ["lightgbm", "hist_gradient_boosting", "random_forest"]
+    config_path = tmp_path / "model_config.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    result = run(
+        [
+            *BASE_COMMAND,
+            "--config",
+            str(config_path),
+            "--data-dir",
+            str(data_dir),
+            "--metadata",
+            str(metadata_path),
+            "--feature-groups",
+            str(feature_groups_path),
+            "--mode",
+            "model-comparison",
+            "--output-dir",
+            str(reports_dir),
+            "--run-name",
+            "stage2",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    results = pd.read_csv(reports_dir / "tables" / "stage2_model_comparison_valid.csv")
+    assert len(results) == 3
+    assert "actual_model_name" in results.columns
+    assert {"run_name", "threshold", "random_seed"}.issubset(results.columns)
+    assert set(results["run_name"]) == {"stage2"}
+    assert set(results["threshold"]) == {0.5}
+    assert set(results["random_seed"]) == {42}
+    assert (reports_dir / "figures" / "stage2_model_comparison_pr_auc.png").exists()
+
+
 def test_missing_processed_parquet_fails_clearly(tmp_path: Path) -> None:
     metadata_path = tmp_path / "metadata.json"
     feature_groups_path = tmp_path / "feature_groups.json"

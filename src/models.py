@@ -6,7 +6,7 @@ from importlib.util import find_spec
 from typing import Any
 
 from sklearn.dummy import DummyClassifier
-from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 
@@ -16,6 +16,7 @@ AVAILABLE_MODELS: tuple[str, ...] = (
     "logistic_regression",
     "lightgbm",
     "hist_gradient_boosting",
+    "random_forest",
 )
 
 
@@ -57,6 +58,28 @@ def build_logistic_regression_model(
     return LogisticRegression(**model_params)
 
 
+def build_hist_gradient_boosting_model(
+    random_seed: int,
+    params: dict[str, Any] | None = None,
+) -> HistGradientBoostingClassifier:
+    """Build an untrained ``HistGradientBoostingClassifier``."""
+
+    model_params = dict(params or {})
+    model_params.setdefault("random_state", random_seed)
+    return HistGradientBoostingClassifier(**model_params)
+
+
+def build_random_forest_model(
+    random_seed: int,
+    params: dict[str, Any] | None = None,
+) -> RandomForestClassifier:
+    """Build an untrained ``RandomForestClassifier``."""
+
+    model_params = dict(params or {})
+    model_params.setdefault("random_state", random_seed)
+    return RandomForestClassifier(**model_params)
+
+
 def build_training_pipeline(preprocessor: object, classifier: object) -> Pipeline:
     """Build a sklearn training pipeline from preprocessor and classifier."""
 
@@ -89,9 +112,37 @@ def build_model(
         return LGBMClassifier(**model_params)
 
     if model_name == "hist_gradient_boosting":
-        model_params = dict(params or {})
-        model_params.setdefault("random_state", random_seed)
-        return HistGradientBoostingClassifier(**model_params)
+        return build_hist_gradient_boosting_model(random_seed=random_seed, params=params)
+
+    if model_name == "random_forest":
+        return build_random_forest_model(random_seed=random_seed, params=params)
 
     supported = ", ".join(AVAILABLE_MODELS)
     raise ValueError(f"Unsupported model '{model_name}'. Supported models: {supported}.")
+
+
+def resolve_tree_model(
+    config: dict[str, Any],
+    random_seed: int,
+) -> tuple[str, object, str | None]:
+    """Resolve LightGBM with configured fallbacks and return actual name, estimator, and reason."""
+
+    models_config = config.get("models", {})
+    fallback_order = config.get(
+        "tree_model_fallback_order",
+        ["lightgbm", "hist_gradient_boosting", "random_forest"],
+    )
+    failure_reasons: list[str] = []
+    for model_name in fallback_order:
+        params = dict(models_config.get(model_name, {}) or {})
+        enabled = bool(params.pop("enabled", True))
+        if not enabled:
+            failure_reasons.append(f"{model_name} disabled in config")
+            continue
+        try:
+            estimator = build_model(model_name, random_seed=random_seed, params=params)
+            reason = "; ".join(failure_reasons) if failure_reasons else None
+            return model_name, estimator, reason
+        except Exception as exc:
+            failure_reasons.append(f"{model_name} unavailable: {exc}")
+    raise ImportError("No configured tree model is available. " + "; ".join(failure_reasons))

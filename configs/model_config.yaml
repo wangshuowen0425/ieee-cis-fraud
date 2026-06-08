@@ -8,19 +8,41 @@ models:
   logistic_regression:
     class_weight: balanced
     solver: saga
-    max_iter: 300
+    max_iter: 200
     n_jobs: -1
   lightgbm:
-    enabled: false
+    enabled: true
+    n_estimators: 300
+    learning_rate: 0.05
+    num_leaves: 31
+    subsample: 0.8
+    colsample_bytree: 0.8
+    n_jobs: -1
   hist_gradient_boosting:
-    enabled: false
+    enabled: true
+    max_iter: 150
+    learning_rate: 0.05
+    max_leaf_nodes: 31
+    early_stopping: true
+  random_forest:
+    enabled: true
+    n_estimators: 150
+    max_depth: 12
+    min_samples_leaf: 20
+    class_weight: balanced_subsample
+    n_jobs: -1
 
 fallback_model: hist_gradient_boosting
+tree_model_fallback_order:
+  - lightgbm
+  - hist_gradient_boosting
+  - random_forest
 
 preprocessing:
   numeric_imputer: median
   categorical_imputer: constant
   categorical_fill_value: "__MISSING__"
+  tree_categorical_fill_value: "**MISSING**"
   one_hot_handle_unknown: ignore
   one_hot_min_frequency: 20
   one_hot_max_categories: 100
