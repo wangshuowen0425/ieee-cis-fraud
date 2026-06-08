@@ -1,76 +1,80 @@
-
----
-
-# README.md
-
-```md
 # IEEE-CIS Fraud Detection Course Project
 
-本仓库用于完成 IEEE-CIS Fraud Detection 数据集上的电商交易欺诈检测课程实验。
+This repository contains a reproducible course project for fraud detection on the IEEE-CIS Fraud Detection dataset. The project focuses on a clear experiment workflow, model comparison, and careful evaluation under class imbalance rather than Kaggle leaderboard optimization.
 
-本项目目标不是复现 Kaggle 排行榜最优方案，也不是提出原创模型，而是建立一个可重复运行、步骤清楚、结果可解释的机器学习实验流程。
+Current status: stage 0 only. Real model training, real evaluation metrics, figures, and experimental conclusions have not been produced yet.
 
-当前阶段：第 0 阶段项目骨架。  
-当前尚未完成真实模型训练，尚未产生真实实验指标或结论。
+## Project Structure
 
-## 1. Project Goal
-
-This project builds a reproducible machine learning experiment for IEEE-CIS fraud detection.
-
-Main goals:
-
-1. Build a complete reproducible pipeline from raw data to model evaluation.
-2. Compare baseline and non-linear models under class imbalance.
-3. Analyze whether identity-related features improve fraud detection.
-4. Analyze whether missingness patterns contain useful fraud signals.
-
-## 2. Repository Structure
-
-```text
+```bash
 ieee-cis-fraud/
-├── .gitignore
-├── AGENTS.md
-├── PROJECT_CONTRACT.md
-├── README.md
-├── requirements.txt
-├── requirements-optional.txt
-│
-├── configs/
-│   ├── data_config.yaml
-│   └── model_config.yaml
-│
-├── data/
-│   ├── raw/
-│   │   └── .gitkeep
-│   └── processed/
-│       └── .gitkeep
-│
-├── src/
-│   ├── __init__.py
-│   ├── data_loader.py
-│   ├── data_pipeline.py
-│   ├── feature_groups.py
-│   ├── eda.py
-│   ├── preprocessing.py
-│   ├── models.py
-│   ├── metrics.py
-│   ├── train.py
-│   ├── evaluate.py
-│   └── run_experiments.py
-│
-├── tests/
-│   ├── __init__.py
-│   ├── test_data_loader.py
-│   ├── test_data_pipeline.py
-│   ├── test_metrics.py
-│   └── test_cli.py
-│
-├── reports/
-│   ├── stage_summary.md
-│   ├── figures/
-│   │   └── .gitkeep
-│   └── tables/
-│       └── .gitkeep
-│
-└── logs/
-    └── .gitkeep
+|-- configs/                 # YAML configuration files
+|-- data/
+|   |-- raw/                 # local raw CSV files, not committed
+|   `-- processed/           # future processed datasets, not committed
+|-- logs/                    # future run logs
+|-- reports/
+|   |-- figures/             # future figures
+|   `-- tables/              # future result tables and metadata
+|-- src/                     # project source modules
+|-- tests/                   # automated tests
+|-- AGENTS.md
+|-- PROJECT_CONTRACT.md
+|-- README.md
+|-- requirements.txt
+`-- requirements-optional.txt
+```
+
+## Raw Data Placement
+
+Place the original CSV files here:
+
+```bash
+data/raw/train_transaction.csv
+data/raw/train_identity.csv
+```
+
+Do not modify or overwrite the raw CSV files.
+
+## Environment Setup
+
+Create and activate a virtual environment in Windows Git Bash:
+
+```bash
+python -m venv .venv
+source .venv/Scripts/activate
+```
+
+Install core dependencies:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+Install optional LightGBM dependency:
+
+```bash
+python -m pip install -r requirements-optional.txt
+```
+
+## Stage 0 Commands
+
+Data check command placeholder:
+
+```bash
+python -m src.data_loader --help
+```
+
+Model configuration dry-run:
+
+```bash
+python -m src.run_experiments --config configs/model_config.yaml --dry-run
+```
+
+List registered models:
+
+```bash
+python -m src.run_experiments --config configs/model_config.yaml --list-models
+```
+
+Stage 0 does not train models, read the full dataset, generate final metrics, or make experimental claims.
