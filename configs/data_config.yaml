@@ -1,0 +1,13 @@
+raw_dir: data/raw
+processed_dir: data/processed
+transaction_file: train_transaction.csv
+identity_file: train_identity.csv
+target_column: isFraud
+id_column: TransactionID
+time_column: TransactionDT
+random_seed: 42
+smoke_test_rows: 50000
+target_sample_size: 120000
+train_ratio: 0.60
+valid_ratio: 0.20
+test_ratio: 0.20
