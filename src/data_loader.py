@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import yaml
 
 
@@ -58,6 +59,87 @@ def validate_raw_files(config: dict[str, Any]) -> dict[str, Path]:
             raise ValueError(f"{name} raw file is empty: {path}")
         LOGGER.info("%s raw file is accessible: %s", name, path)
     return paths
+
+
+def inspect_csv_schema(path: str | Path, nrows: int = 5) -> dict[str, str]:
+    """Inspect CSV columns and inferred dtypes using only a small row sample."""
+    csv_path = Path(path)
+    sample = pd.read_csv(csv_path, nrows=nrows)
+    schema = {column: str(dtype) for column, dtype in sample.dtypes.items()}
+    LOGGER.info("Inspected %s columns from %s using nrows=%s", len(schema), csv_path, nrows)
+    return schema
+
+
+def select_existing_columns(
+    available_columns: list[str] | set[str],
+    candidate_columns: list[str],
+    context: str = "columns",
+) -> tuple[list[str], list[str]]:
+    """Return existing and missing candidate columns while preserving candidate order."""
+    available = set(available_columns)
+    existing = [column for column in candidate_columns if column in available]
+    missing = [column for column in candidate_columns if column not in available]
+    if missing:
+        LOGGER.warning("Missing %s columns skipped: %s", context, missing)
+    return existing, missing
+
+
+def _dedupe_preserve_order(columns: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for column in columns:
+        if column not in seen:
+            unique.append(column)
+            seen.add(column)
+    return unique
+
+
+def load_selected_transaction_data(
+    config: dict[str, Any],
+    selected_columns: list[str] | None = None,
+) -> tuple[pd.DataFrame, list[str]]:
+    """Load only required transaction columns and selected available feature columns."""
+    paths = validate_raw_files(config)
+    transaction_path = paths["transaction"]
+    schema = inspect_csv_schema(transaction_path)
+    required = [config["id_column"], config["target_column"], config["time_column"]]
+    candidates = selected_columns if selected_columns is not None else list(config.get("transaction_columns", []))
+    existing_features, missing_features = select_existing_columns(
+        list(schema),
+        candidates,
+        context="transaction feature",
+    )
+    missing_required = [column for column in required if column not in schema]
+    if missing_required:
+        raise ValueError(f"Missing required transaction columns: {missing_required}")
+
+    usecols = _dedupe_preserve_order(required + existing_features)
+    LOGGER.info("Loading transaction data with %s selected columns", len(usecols))
+    return pd.read_csv(transaction_path, usecols=usecols), missing_features
+
+
+def load_selected_identity_data(
+    config: dict[str, Any],
+    selected_columns: list[str] | None = None,
+) -> tuple[pd.DataFrame, list[str]]:
+    """Load only TransactionID and selected available identity columns."""
+    paths = validate_raw_files(config)
+    identity_path = paths["identity"]
+    schema = inspect_csv_schema(identity_path)
+    required = [config["id_column"]]
+    candidates = selected_columns if selected_columns is not None else list(config.get("identity_columns", []))
+    existing_features, missing_features = select_existing_columns(
+        list(schema),
+        candidates,
+        context="identity feature",
+    )
+    missing_required = [column for column in required if column not in schema]
+    if missing_required:
+        raise ValueError(f"Missing required identity columns: {missing_required}")
+
+    usecols = _dedupe_preserve_order(required + existing_features)
+    LOGGER.info("Loading identity data with %s selected columns", len(usecols))
+    return pd.read_csv(identity_path, usecols=usecols), missing_features
 
 
 def describe_raw_files(config: dict[str, Any]) -> list[dict[str, Any]]:

@@ -1,9 +1,17 @@
 from pathlib import Path
 
+import pandas as pd
 import pytest
 import yaml
 
-from src.data_loader import load_yaml_config, resolve_raw_paths, validate_raw_files
+from src.data_loader import (
+    inspect_csv_schema,
+    load_selected_transaction_data,
+    load_yaml_config,
+    resolve_raw_paths,
+    select_existing_columns,
+    validate_raw_files,
+)
 
 
 def write_config(project_root: Path) -> Path:
@@ -24,6 +32,11 @@ def write_config(project_root: Path) -> Path:
         "train_ratio": 0.60,
         "valid_ratio": 0.20,
         "test_ratio": 0.20,
+        "sample_strategy": "stratified_preserve_ratio",
+        "output_format": "parquet",
+        "transaction_columns": ["TransactionAmt", "ProductCD", "card1", "V1"],
+        "identity_columns": ["id_01", "DeviceType"],
+        "missing_indicator_candidates": ["DeviceType", "id_01", "dist1"],
     }
     config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     return config_path
@@ -84,3 +97,55 @@ def test_path_resolution_uses_config_location_not_personal_absolute_path(tmp_pat
 
     assert paths["transaction"] == tmp_path / "data" / "raw" / "train_transaction.csv"
     assert paths["identity"] == tmp_path / "data" / "raw" / "train_identity.csv"
+
+
+def test_inspect_csv_schema_reads_small_sample(tmp_path: Path) -> None:
+    csv_path = tmp_path / "sample.csv"
+    csv_path.write_text("TransactionID,isFraud\n1,0\n2,1\n", encoding="utf-8")
+
+    schema = inspect_csv_schema(csv_path, nrows=1)
+
+    assert schema == {"TransactionID": "int64", "isFraud": "int64"}
+
+
+def test_select_existing_columns_logs_missing_candidates(caplog: pytest.LogCaptureFixture) -> None:
+    existing, missing = select_existing_columns(
+        {"TransactionAmt", "ProductCD"},
+        ["TransactionAmt", "missing_col"],
+        context="transaction feature",
+    )
+
+    assert existing == ["TransactionAmt"]
+    assert missing == ["missing_col"]
+    assert "missing_col" in caplog.text
+
+
+def test_load_selected_transaction_data_only_reads_actual_existing_fields(tmp_path: Path) -> None:
+    config_path = write_config(tmp_path)
+    raw_dir = tmp_path / "data" / "raw"
+    raw_dir.mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "TransactionID": [1, 2],
+            "isFraud": [0, 1],
+            "TransactionDT": [10, 20],
+            "TransactionAmt": [100.0, 200.0],
+            "ProductCD": ["W", "C"],
+            "V1": [999, 888],
+        }
+    ).to_csv(raw_dir / "train_transaction.csv", index=False)
+    (raw_dir / "train_identity.csv").write_text("TransactionID,id_01\n1,0\n", encoding="utf-8")
+    config = load_yaml_config(config_path)
+    config["transaction_columns"] = ["TransactionAmt", "ProductCD", "card1"]
+
+    transaction, missing = load_selected_transaction_data(config)
+
+    assert list(transaction.columns) == [
+        "TransactionID",
+        "isFraud",
+        "TransactionDT",
+        "TransactionAmt",
+        "ProductCD",
+    ]
+    assert "V1" not in transaction.columns
+    assert missing == ["card1"]

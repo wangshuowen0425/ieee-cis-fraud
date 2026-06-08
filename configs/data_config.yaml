@@ -8,6 +8,90 @@ time_column: TransactionDT
 random_seed: 42
 smoke_test_rows: 50000
 target_sample_size: 120000
+formal_sample_size: 120000
+formal_output_subdir: stage2_formal
+maximum_allowed_fraud_rate_difference: 0.002
 train_ratio: 0.60
 valid_ratio: 0.20
 test_ratio: 0.20
+sample_strategy: stratified_preserve_ratio
+output_format: parquet
+transaction_columns:
+  - TransactionAmt
+  - ProductCD
+  - card1
+  - card2
+  - card3
+  - card4
+  - card5
+  - card6
+  - addr1
+  - addr2
+  - dist1
+  - dist2
+  - P_emaildomain
+  - R_emaildomain
+  - C1
+  - C2
+  - C3
+  - C4
+  - C5
+  - C6
+  - C7
+  - C8
+  - C9
+  - C10
+  - C11
+  - C12
+  - C13
+  - C14
+  - D1
+  - D2
+  - D3
+  - D4
+  - D5
+  - D6
+  - D7
+  - D8
+  - D9
+  - D10
+  - D11
+  - D12
+  - D13
+  - D14
+  - D15
+  - M1
+  - M2
+  - M3
+  - M4
+  - M5
+  - M6
+  - M7
+  - M8
+  - M9
+identity_columns:
+  - id_01
+  - id_02
+  - id_03
+  - id_04
+  - id_05
+  - id_06
+  - id_07
+  - id_08
+  - id_09
+  - id_10
+  - id_11
+  - id_12
+  - id_13
+  - id_14
+  - id_15
+  - DeviceType
+  - DeviceInfo
+missing_indicator_candidates:
+  - DeviceInfo
+  - DeviceType
+  - id_01
+  - id_02
+  - dist1
+  - P_emaildomain
+  - R_emaildomain
