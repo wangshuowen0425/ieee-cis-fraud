@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE and operating system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Secrets and local settings
+.env
+*.env
+*.key
+
+# Raw and processed datasets
+data/raw/*
+!data/raw/.gitkeep
+
+data/processed/*
+!data/processed/.gitkeep
+
+# Models and caches
+models/
+artifacts/
+cache/
+*.pkl
+*.joblib
+*.bin
+
+# Logs
+logs/*
+!logs/.gitkeep
+
+# Notebook temporary files
+.ipynb_checkpoints/
+
+# Temporary exports
+tmp/
+temp/
