@@ -1,8 +1,4 @@
-"""Model registry for the stage 0 experiment entry point.
-
-This module only builds untrained estimator instances. It does not read data,
-fit models, or silently replace one registered model with another.
-"""
+"""Model registry and sklearn pipeline builders."""
 
 from __future__ import annotations
 
@@ -12,6 +8,7 @@ from typing import Any
 from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
 
 
 AVAILABLE_MODELS: tuple[str, ...] = (
@@ -34,38 +31,50 @@ def is_lightgbm_available() -> bool:
     return find_spec("lightgbm") is not None
 
 
+def build_dummy_model(params: dict[str, Any] | None = None) -> DummyClassifier:
+    """Build an untrained ``DummyClassifier``."""
+
+    model_params = {"strategy": "prior"}
+    model_params.update(params or {})
+    return DummyClassifier(**model_params)
+
+
+def build_logistic_regression_model(
+    random_seed: int,
+    params: dict[str, Any] | None = None,
+) -> LogisticRegression:
+    """Build an untrained ``LogisticRegression`` model."""
+
+    model_params: dict[str, Any] = {
+        "class_weight": "balanced",
+        "solver": "saga",
+        "max_iter": 300,
+        "random_state": random_seed,
+        "n_jobs": -1,
+    }
+    model_params.update(params or {})
+    model_params.setdefault("random_state", random_seed)
+    return LogisticRegression(**model_params)
+
+
+def build_training_pipeline(preprocessor: object, classifier: object) -> Pipeline:
+    """Build a sklearn training pipeline from preprocessor and classifier."""
+
+    return Pipeline(steps=[("preprocessor", preprocessor), ("classifier", classifier)])
+
+
 def build_model(
     model_name: str,
     random_seed: int,
     params: dict[str, Any] | None = None,
 ) -> object:
-    """Create an untrained model instance from the registry.
-
-    Parameters
-    ----------
-    model_name:
-        Registered model name.
-    random_seed:
-        Deterministic seed passed to estimators that support it.
-    params:
-        Optional estimator parameters from configuration.
-
-    Raises
-    ------
-    ValueError
-        If the model name is not registered.
-    ImportError
-        If ``lightgbm`` is requested but the optional dependency is missing.
-    """
-
-    model_params = dict(params or {})
+    """Create an untrained model instance from the registry."""
 
     if model_name == "dummy":
-        return DummyClassifier(**model_params)
+        return build_dummy_model(params)
 
     if model_name == "logistic_regression":
-        model_params.setdefault("random_state", random_seed)
-        return LogisticRegression(**model_params)
+        return build_logistic_regression_model(random_seed=random_seed, params=params)
 
     if model_name == "lightgbm":
         if not is_lightgbm_available():
@@ -75,10 +84,12 @@ def build_model(
             )
         from lightgbm import LGBMClassifier
 
+        model_params = dict(params or {})
         model_params.setdefault("random_state", random_seed)
         return LGBMClassifier(**model_params)
 
     if model_name == "hist_gradient_boosting":
+        model_params = dict(params or {})
         model_params.setdefault("random_state", random_seed)
         return HistGradientBoostingClassifier(**model_params)
 

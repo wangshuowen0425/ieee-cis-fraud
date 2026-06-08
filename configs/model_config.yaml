@@ -1,11 +1,39 @@
 random_seed: 42
+default_threshold: 0.5
+primary_metric: pr_auc
 
 models:
-  - dummy
-  - logistic_regression
-  - lightgbm
+  dummy:
+    strategy: prior
+  logistic_regression:
+    class_weight: balanced
+    solver: saga
+    max_iter: 300
+    n_jobs: -1
+  lightgbm:
+    enabled: false
+  hist_gradient_boosting:
+    enabled: false
 
-primary_metric: pr_auc
+fallback_model: hist_gradient_boosting
+
+preprocessing:
+  numeric_imputer: median
+  categorical_imputer: constant
+  categorical_fill_value: "__MISSING__"
+  one_hot_handle_unknown: ignore
+  one_hot_min_frequency: 20
+  one_hot_max_categories: 100
+  scale_numeric_for_logistic: true
+
+metrics:
+  - pr_auc
+  - roc_auc
+  - precision
+  - recall
+  - f1
+  - mcc
+  - accuracy
 
 additional_metrics:
   - roc_auc
@@ -21,21 +49,3 @@ feature_groups:
   - transaction_basic
   - transaction_identity
   - transaction_identity_missing
-
-fallback_model: hist_gradient_boosting
-
-model_params:
-  dummy:
-    strategy: most_frequent
-  logistic_regression:
-    max_iter: 1000
-    solver: lbfgs
-    class_weight: balanced
-  lightgbm:
-    n_estimators: 100
-    learning_rate: 0.05
-    num_leaves: 31
-    n_jobs: -1
-  hist_gradient_boosting:
-    max_iter: 100
-    learning_rate: 0.05
