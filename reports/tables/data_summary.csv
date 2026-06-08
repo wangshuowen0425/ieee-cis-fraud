@@ -1,0 +1,4 @@
+split,rows,fraud_count,fraud_ratio,column_count
+train,30000,1050,0.035,80
+valid,10000,350,0.035,80
+test,10000,350,0.035,80
