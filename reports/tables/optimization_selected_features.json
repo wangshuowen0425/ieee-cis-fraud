@@ -1,0 +1,16 @@
+{
+  "experiment": "feature_optimization",
+  "baseline_feature_group": "transaction_basic",
+  "optimized_feature_set": "optimized_domain_uid",
+  "model_preference": "lightgbm",
+  "random_seed": 42,
+  "baseline_feature_count": 52,
+  "optimized_feature_count": 126,
+  "generated_feature_count": 74,
+  "uid_columns_excluded_from_model": [
+    "uid_card1_addr1_D1n",
+    "uid_card1_D1n",
+    "uid_card1_addr1"
+  ],
+  "aggregation_feature_count": 60
+}
