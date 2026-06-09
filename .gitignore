@@ -40,6 +40,10 @@ cache/
 logs/*
 !logs/.gitkeep
 
+# Prediction exports
+reports/predictions/*
+!reports/predictions/.gitkeep
+
 # Notebook temporary files
 .ipynb_checkpoints/
 

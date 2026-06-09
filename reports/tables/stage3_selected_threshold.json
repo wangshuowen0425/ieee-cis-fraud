@@ -1,0 +1,18 @@
+{
+  "selection_split": "validation",
+  "cost_formula": "10 * FN + 1 * FP",
+  "false_negative_cost": 10,
+  "false_positive_cost": 1,
+  "selected_threshold": 0.07,
+  "validation_cost": 3679,
+  "validation_precision": 0.34456264775413714,
+  "validation_recall": 0.694047619047619,
+  "validation_f1": 0.46050552922590837,
+  "validation_tn": 22051,
+  "validation_fp": 1109,
+  "validation_fn": 257,
+  "validation_tp": 583,
+  "selected_model": "lightgbm",
+  "selected_feature_group": "transaction_basic",
+  "validation_selection_score": 0.616242666700954
+}

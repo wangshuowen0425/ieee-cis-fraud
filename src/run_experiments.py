@@ -27,6 +27,7 @@ from src.preprocessing import (
     split_features_target,
     validate_requested_features,
 )
+from src.threshold_analysis import run_threshold_analysis
 from src.train import measure_training_time
 
 
@@ -66,7 +67,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument(
         "--mode",
-        choices=["model-comparison", "ablation-and-final-test"],
+        choices=["model-comparison", "ablation-and-final-test", "threshold-analysis"],
         default=None,
     )
     parser.add_argument("--data-dir", type=Path, default=Path("data/processed"))
@@ -375,6 +376,25 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Selected feature group: {selected_group}")
             print(f"Selection reason: {reason}")
             print(f"Final test rows: {len(final_test)}")
+            return 0
+
+        if args.mode == "threshold-analysis":
+            _configure_logging(args.run_name)
+            result = run_threshold_analysis(
+                config,
+                data_dir=args.data_dir,
+                metadata_path=args.metadata,
+                feature_groups_path=args.feature_groups,
+                output_dir=args.output_dir,
+                run_name=args.run_name,
+            )
+            frozen = result["frozen"]
+            print("Stage 3 threshold analysis complete")
+            print(f"Selected model: {frozen['actual_model_name']}")
+            print(f"Selected feature group: {frozen['selected_feature_group']}")
+            print(f"Selected threshold: {result['selected_threshold']}")
+            print(f"Threshold rows: {result['threshold_count']}")
+            print(f"Results: {result['paths']['test_comparison']}")
             return 0
 
         if _training_mode_requested(raw_args):
