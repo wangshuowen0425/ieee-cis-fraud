@@ -10,7 +10,8 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
+import matplotlib
+matplotlib.use("Agg")  # 设置为非交互后端
 
 REQUIRED_PREDICTION_COLUMNS: tuple[str, ...] = (
     "TransactionID",
