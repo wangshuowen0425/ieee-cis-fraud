@@ -1,0 +1,5 @@
+error_type,threshold_0_5_count,selected_threshold_count,absolute_change,relative_change
+TP,329,614,285,0.8662613981762918
+TN,23112,22113,-999,-0.04322429906542056
+FP,48,1047,999,20.8125
+FN,511,226,-285,-0.5577299412915852
