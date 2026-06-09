@@ -1,0 +1,17 @@
+{
+  "experiment": "time_split_extension",
+  "selection_split": "validation",
+  "selected_model": "lightgbm",
+  "selected_feature_group": "transaction_basic",
+  "selection_source": "reports\\tables\\stage3_selected_threshold.json",
+  "selected_threshold": 0.06,
+  "cost_formula": "10 * FN + 1 * FP",
+  "validation_cost": 4452,
+  "validation_precision": 0.3435281267067176,
+  "validation_recall": 0.6593291404612159,
+  "validation_f1": 0.451705565529623,
+  "validation_tn": 21844,
+  "validation_fp": 1202,
+  "validation_fn": 325,
+  "validation_tp": 629
+}
